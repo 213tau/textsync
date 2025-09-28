@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Firestore Text Sync</title>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <h2>Firestore Text Sync</h2>
+
+  <textarea id="textBox" rows="5" cols="40" placeholder="Type something..."></textarea>
+  <p><strong>Live Output:</strong> <span id="output"></span></p>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    // Import Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot } 
+      from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    // Your Firebase config
+    const firebaseConfig = {
+      "projectId": "studio-2506495245-504e9",
+      "appId": "1:613382717921:web:f012904a77fe86e69dd2a0",
+      "apiKey": "AIzaSyBn86CyU4GKAJVNc93qAdeWUO9idpPbD8I",
+      "authDomain": "studio-2506495245-504e9.firebaseapp.com",
+      "measurementId": "",
+      "messagingSenderId": "613382717921"
+    };
+
+    // Init
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Reference a document
+    const textRef = doc(db, "texts", "sharedText");
+
+    const textBox = document.getElementById("textBox");
+    const output = document.getElementById("output");
+
+    // 1. Listen for changes in Firestore (real-time sync)
+    onSnapshot(textRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (textBox.value !== data.text) {
+            textBox.value = data.text || "";
+        }
+        output.textContent = data.text || "";
+      }
+    });
+
+    // 2. Update Firestore when user types
+    textBox.addEventListener("input", async () => {
+      await setDoc(textRef, { text: textBox.value });
+    });
+
+    // Initial load
+    getDoc(textRef).then((docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            textBox.value = data.text || "";
+            output.textContent = data.text || "";
+        }
+    })
+  </script>
+</body>
+</html>
