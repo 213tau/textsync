@@ -2,55 +2,91 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>WebRTC Text Sync</title>
+  <title>WebRTC Text Sync with QR</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    #qr { margin: 10px; }
+    #reader { width: 250px; margin: 10px auto; }
+  </style>
 </head>
 <body>
-  <h2>WebRTC Text Sync</h2>
+  <h2>WebRTC Text Sync (QR Signaling)</h2>
   <textarea id="textBox" rows="6" cols="40" placeholder="Type here..."></textarea>
-  <pre id="log"></pre>
 
-  <h3>Manual Signaling</h3>
-  <textarea id="offer" placeholder="Offer"></textarea>
-  <textarea id="answer" placeholder="Answer"></textarea>
-  <button id="createOffer">Create Offer</button>
-  <button id="createAnswer">Create Answer</button>
-  <button id="setAnswer">Set Answer</button>
+  <h3>QR Connection</h3>
+  <button id="createOffer">Create Offer (show QR)</button>
+  <button id="createAnswer">Scan Offer & Show Answer QR</button>
+  <button id="scanAnswer">Scan Answer</button>
+
+  <div id="qr"></div>
+  <div id="reader"></div>
 
   <script>
-    let pc = new RTCPeerConnection();
-    let channel = pc.createDataChannel("textSync");
-
+    let pc, channel;
     const textBox = document.getElementById("textBox");
-    const log = document.getElementById("log");
 
-    channel.onmessage = (e) => {
-      textBox.value = e.data;
-    };
+    function initPeer() {
+      pc = new RTCPeerConnection();
+      channel = pc.createDataChannel("textSync");
 
-    textBox.addEventListener("input", () => {
-      channel.send(textBox.value);
-    });
+      channel.onmessage = (e) => {
+        textBox.value = e.data;
+      };
 
-    pc.onicecandidate = (e) => {
-      if (e.candidate) return;
-      log.textContent = JSON.stringify(pc.localDescription);
-    };
+      textBox.addEventListener("input", () => {
+        if (channel.readyState === "open") {
+          channel.send(textBox.value);
+        }
+      });
+    }
+
+    function showQR(data) {
+      document.getElementById("qr").innerHTML = "";
+      new QRCode(document.getElementById("qr"), {
+        text: JSON.stringify(data),
+        width: 250,
+        height: 250
+      });
+    }
+
+    function scanQR(callback) {
+      const reader = new Html5Qrcode("reader");
+      reader.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        (decoded) => {
+          reader.stop();
+          callback(JSON.parse(decoded));
+        }
+      );
+    }
 
     document.getElementById("createOffer").onclick = async () => {
+      initPeer();
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) showQR(pc.localDescription);
+      };
       let offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
     };
 
-    document.getElementById("createAnswer").onclick = async () => {
-      let offer = JSON.parse(document.getElementById("offer").value);
-      await pc.setRemoteDescription(offer);
-      let answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+    document.getElementById("createAnswer").onclick = () => {
+      initPeer();
+      scanQR(async (offer) => {
+        await pc.setRemoteDescription(offer);
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) showQR(pc.localDescription);
+        };
+        let answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+      });
     };
 
-    document.getElementById("setAnswer").onclick = async () => {
-      let answer = JSON.parse(document.getElementById("answer").value);
-      await pc.setRemoteDescription(answer);
+    document.getElementById("scanAnswer").onclick = () => {
+      scanQR(async (answer) => {
+        await pc.setRemoteDescription(answer);
+      });
     };
   </script>
 </body>
