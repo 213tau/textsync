@@ -2,92 +2,66 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>WebRTC Text Sync with QR</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <title>Supabase Real-Time Messages</title>
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <style>
-    #qr { margin: 10px; }
-    #reader { width: 250px; margin: 10px auto; }
+    body { font-family: sans-serif; padding: 20px; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 4px 8px; border-bottom: 1px solid #ddd; }
+    input { padding: 8px; width: 250px; }
+    button { padding: 8px 12px; margin-left: 4px; }
   </style>
 </head>
 <body>
-  <h2>WebRTC Text Sync (QR Signaling)</h2>
-  <textarea id="textBox" rows="6" cols="40" placeholder="Type here..."></textarea>
+  <h2>Supabase Real-Time Messages</h2>
 
-  <h3>QR Connection</h3>
-  <button id="createOffer">Create Offer (show QR)</button>
-  <button id="createAnswer">Scan Offer & Show Answer QR</button>
-  <button id="scanAnswer">Scan Answer</button>
+  <input id="msgInput" type="text" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
 
-  <div id="qr"></div>
-  <div id="reader"></div>
+  <ul id="messages"></ul>
 
   <script>
-    let pc, channel;
-    const textBox = document.getElementById("textBox");
+    // 🔹 Your Supabase credentials
+    const SUPABASE_URL = "https://kyoskljfosvtlcjmrqwz.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5b3NrbGpmb3N2dGxjam1ycXd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwODc0NzAsImV4cCI6MjA3NDY2MzQ3MH0.Fq8h5tVk2ZzDjigHX_Nc2g0HwhHUDau5GxjHtw75Vgs";
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    function initPeer() {
-      pc = new RTCPeerConnection();
-      channel = pc.createDataChannel("textSync");
+    const msgList = document.getElementById("messages");
+    const msgInput = document.getElementById("msgInput");
 
-      channel.onmessage = (e) => {
-        textBox.value = e.data;
-      };
-
-      textBox.addEventListener("input", () => {
-        if (channel.readyState === "open") {
-          channel.send(textBox.value);
-        }
-      });
+    // Send message
+    async function sendMessage() {
+      const text = msgInput.value.trim();
+      if (!text) return;
+      await supabase.from("messages").insert([{ content: text }]);
+      msgInput.value = "";
     }
 
-    function showQR(data) {
-      document.getElementById("qr").innerHTML = "";
-      new QRCode(document.getElementById("qr"), {
-        text: JSON.stringify(data),
-        width: 250,
-        height: 250
-      });
+    // Render message
+    function addMessage(msg) {
+      const li = document.createElement("li");
+      li.textContent = `[${new Date(msg.inserted_at).toLocaleTimeString()}] ${msg.content}`;
+      msgList.appendChild(li);
     }
 
-    function scanQR(callback) {
-      const reader = new Html5Qrcode("reader");
-      reader.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        (decoded) => {
-          reader.stop();
-          callback(JSON.parse(decoded));
-        }
-      );
+    // Load old messages
+    async function loadMessages() {
+      const { data, error } = await supabase.from("messages").select("*").order("inserted_at");
+      if (error) {
+        console.error("Load error:", error.message);
+        return;
+      }
+      data.forEach(addMessage);
     }
+    loadMessages();
 
-    document.getElementById("createOffer").onclick = async () => {
-      initPeer();
-      pc.onicecandidate = (e) => {
-        if (!e.candidate) showQR(pc.localDescription);
-      };
-      let offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-    };
-
-    document.getElementById("createAnswer").onclick = () => {
-      initPeer();
-      scanQR(async (offer) => {
-        await pc.setRemoteDescription(offer);
-        pc.onicecandidate = (e) => {
-          if (!e.candidate) showQR(pc.localDescription);
-        };
-        let answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-      });
-    };
-
-    document.getElementById("scanAnswer").onclick = () => {
-      scanQR(async (answer) => {
-        await pc.setRemoteDescription(answer);
-      });
-    };
+    // Real-time sync
+    supabase
+      .channel("public:messages")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        addMessage(payload.new);
+      })
+      .subscribe();
   </script>
 </body>
 </html>
