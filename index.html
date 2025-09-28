@@ -2,64 +2,68 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Supabase Real-Time Messages</title>
+  <title>Supabase Real-Time Typing</title>
   <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    ul { list-style: none; padding: 0; }
-    li { padding: 4px 8px; border-bottom: 1px solid #ddd; }
-    input { padding: 8px; width: 250px; }
-    button { padding: 8px 12px; margin-left: 4px; }
+    #others { border: 1px solid #ccc; padding: 10px; margin-top: 20px; }
+    input { padding: 8px; width: 300px; }
   </style>
 </head>
 <body>
-  <h2>Supabase Real-Time Messages</h2>
+  <h2>Shared Typing Demo</h2>
+  
+  <label>Your Name: <input id="username" placeholder="Type your name..." /></label><br><br>
+  <input id="msgInput" type="text" placeholder="Start typing..." />
 
-  <input id="msgInput" type="text" placeholder="Type a message..." />
-  <button onclick="sendMessage()">Send</button>
-
-  <ul id="messages"></ul>
+  <div id="others">
+    <h3>Others are typing:</h3>
+    <div id="liveArea"></div>
+  </div>
 
   <script>
-    // 🔹 Your Supabase credentials
+    // Supabase credentials
     const SUPABASE_URL = "https://kyoskljfosvtlcjmrqwz.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5b3NrbGpmb3N2dGxjam1ycXd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwODc0NzAsImV4cCI6MjA3NDY2MzQ3MH0.Fq8h5tVk2ZzDjigHX_Nc2g0HwhHUDau5GxjHtw75Vgs";
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const msgList = document.getElementById("messages");
     const msgInput = document.getElementById("msgInput");
+    const usernameInput = document.getElementById("username");
+    const liveArea = document.getElementById("liveArea");
 
-    // Send message
-    async function sendMessage() {
-      const text = msgInput.value.trim();
-      if (!text) return;
-      await supabase.from("messages").insert([{ content: text }]);
-      msgInput.value = "";
+    // Push typed text to Supabase
+    msgInput.addEventListener("input", async () => {
+      const username = usernameInput.value.trim() || "Anonymous";
+      const content = msgInput.value;
+
+      await supabase
+        .from("typing")
+        .upsert([{ username, content }], { onConflict: "username" });
+    });
+
+    // Render others' typing
+    function renderTyping(data) {
+      liveArea.innerHTML = "";
+      data.forEach(row => {
+        const p = document.createElement("p");
+        p.textContent = row.username + ": " + row.content;
+        liveArea.appendChild(p);
+      });
     }
 
-    // Render message
-    function addMessage(msg) {
-      const li = document.createElement("li");
-      li.textContent = `[${new Date(msg.inserted_at).toLocaleTimeString()}] ${msg.content}`;
-      msgList.appendChild(li);
+    // Initial load
+    async function loadTyping() {
+      const { data } = await supabase.from("typing").select("*");
+      renderTyping(data || []);
     }
+    loadTyping();
 
-    // Load old messages
-    async function loadMessages() {
-      const { data, error } = await supabase.from("messages").select("*").order("inserted_at");
-      if (error) {
-        console.error("Load error:", error.message);
-        return;
-      }
-      data.forEach(addMessage);
-    }
-    loadMessages();
-
-    // Real-time sync
+    // Subscribe to real-time updates
     supabase
-      .channel("public:messages")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        addMessage(payload.new);
+      .channel("public:typing")
+      .on("postgres_changes", { event: "*", schema: "public", table: "typing" }, async () => {
+        const { data } = await supabase.from("typing").select("*");
+        renderTyping(data || []);
       })
       .subscribe();
   </script>
