@@ -1,66 +1,57 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Firestore Text Sync</title>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8">
+  <title>WebRTC Text Sync</title>
 </head>
 <body>
-  <h2>Firestore Text Sync</h2>
+  <h2>WebRTC Text Sync</h2>
+  <textarea id="textBox" rows="6" cols="40" placeholder="Type here..."></textarea>
+  <pre id="log"></pre>
 
-  <textarea id="textBox" rows="5" cols="40" placeholder="Type something..."></textarea>
-  <p><strong>Live Output:</strong> <span id="output"></span></p>
+  <h3>Manual Signaling</h3>
+  <textarea id="offer" placeholder="Offer"></textarea>
+  <textarea id="answer" placeholder="Answer"></textarea>
+  <button id="createOffer">Create Offer</button>
+  <button id="createAnswer">Create Answer</button>
+  <button id="setAnswer">Set Answer</button>
 
-  <!-- Firebase SDK -->
-  <script type="module">
-    // Import Firebase
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } 
-      from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-
-    // Your Firebase config
-    const firebaseConfig = {
-      "projectId": "studio-2506495245-504e9",
-      "appId": "1:613382717921:web:f012904a77fe86e69dd2a0",
-      "apiKey": "AIzaSyBn86CyU4GKAJVNc93qAdeWUO9idpPbD8I",
-      "authDomain": "studio-2506495245-504e9.firebaseapp.com",
-      "measurementId": "",
-      "messagingSenderId": "613382717921"
-    };
-
-    // Init
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    // Reference a document
-    const textRef = doc(db, "texts", "sharedText");
+  <script>
+    let pc = new RTCPeerConnection();
+    let channel = pc.createDataChannel("textSync");
 
     const textBox = document.getElementById("textBox");
-    const output = document.getElementById("output");
+    const log = document.getElementById("log");
 
-    // 1. Listen for changes in Firestore (real-time sync)
-    onSnapshot(textRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (textBox.value !== data.text) {
-            textBox.value = data.text || "";
-        }
-        output.textContent = data.text || "";
-      }
+    channel.onmessage = (e) => {
+      textBox.value = e.data;
+    };
+
+    textBox.addEventListener("input", () => {
+      channel.send(textBox.value);
     });
 
-    // 2. Update Firestore when user types
-    textBox.addEventListener("input", async () => {
-      await setDoc(textRef, { text: textBox.value });
-    });
+    pc.onicecandidate = (e) => {
+      if (e.candidate) return;
+      log.textContent = JSON.stringify(pc.localDescription);
+    };
 
-    // Initial load
-    getDoc(textRef).then((docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            textBox.value = data.text || "";
-            output.textContent = data.text || "";
-        }
-    })
+    document.getElementById("createOffer").onclick = async () => {
+      let offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+    };
+
+    document.getElementById("createAnswer").onclick = async () => {
+      let offer = JSON.parse(document.getElementById("offer").value);
+      await pc.setRemoteDescription(offer);
+      let answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+    };
+
+    document.getElementById("setAnswer").onclick = async () => {
+      let answer = JSON.parse(document.getElementById("answer").value);
+      await pc.setRemoteDescription(answer);
+    };
   </script>
 </body>
 </html>
